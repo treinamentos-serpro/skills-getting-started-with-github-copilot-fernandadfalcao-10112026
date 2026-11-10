@@ -3,6 +3,54 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const participantSections = new Map();
+
+  function createParticipantItem(activity, email) {
+    const participantItem = document.createElement("li");
+    const participantEmail = document.createElement("span");
+    participantEmail.textContent = email;
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "remove-participant";
+    removeButton.textContent = "🗑";
+    removeButton.title = "Remover participante";
+    removeButton.setAttribute("aria-label", `Remover ${email} de ${activity}`);
+    removeButton.addEventListener("click", async () => {
+      removeButton.disabled = true;
+      try {
+        const response = await fetch(
+          `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+          { method: "DELETE" }
+        );
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.detail || "Não foi possível remover o participante.");
+        }
+
+        participantItem.remove();
+        const participantsSection = participantSections.get(activity);
+        const participantsList = participantsSection.querySelector("ul");
+        if (participantsList.children.length === 0) {
+          participantsList.remove();
+          const emptyMessage = document.createElement("p");
+          emptyMessage.className = "participants-empty";
+          emptyMessage.textContent = "Nenhum participante inscrito.";
+          participantsSection.appendChild(emptyMessage);
+        }
+      } catch (error) {
+        messageDiv.textContent = error.message;
+        messageDiv.className = "error";
+        messageDiv.classList.remove("hidden");
+      } finally {
+        removeButton.disabled = false;
+      }
+    });
+
+    participantItem.append(participantEmail, removeButton);
+    return participantItem;
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -26,6 +74,29 @@ document.addEventListener("DOMContentLoaded", () => {
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
         `;
+
+        const participantsSection = document.createElement("div");
+        participantsSection.className = "activity-participants";
+
+        const participantsHeading = document.createElement("h5");
+        participantsHeading.textContent = "Participantes inscritos";
+        participantsSection.appendChild(participantsHeading);
+
+        if (details.participants.length > 0) {
+          const participantsList = document.createElement("ul");
+          details.participants.forEach((email) => {
+            participantsList.appendChild(createParticipantItem(name, email));
+          });
+          participantsSection.appendChild(participantsList);
+        } else {
+          const emptyMessage = document.createElement("p");
+          emptyMessage.className = "participants-empty";
+          emptyMessage.textContent = "Nenhum participante inscrito.";
+          participantsSection.appendChild(emptyMessage);
+        }
+
+        activityCard.appendChild(participantsSection);
+        participantSections.set(name, participantsSection);
 
         activitiesList.appendChild(activityCard);
 
@@ -61,6 +132,19 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.ok) {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
+
+        const participantsSection = participantSections.get(activity);
+        if (participantsSection) {
+          let participantsList = participantsSection.querySelector("ul");
+          if (!participantsList) {
+            participantsList = document.createElement("ul");
+            participantsSection.querySelector(".participants-empty").remove();
+            participantsSection.appendChild(participantsList);
+          }
+
+          participantsList.appendChild(createParticipantItem(activity, email));
+        }
+
         signupForm.reset();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
